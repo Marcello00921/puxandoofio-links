@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Puxando o Fio · produtos dos vídeos</title>
+<meta name="description" content="Os produtos que aparecem nos vídeos do Puxando o Fio, com o link de cada um.">
+<style>
+  :root {
+    --papel: #ECE8E1; --cartao: #F7F4EE; --tinta: #1F1D1A; --graf: #2E2B27;
+    --cinza: #6F685E; --fio: #A3121E; --fio-escuro: #5E0810;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--papel); color: var(--tinta);
+    font-family: Georgia, "Times New Roman", serif;
+    line-height: 1.5; -webkit-text-size-adjust: 100%;
+  }
+  main { max-width: 560px; margin: 0 auto; padding: 32px 16px 48px; }
+  header { border-left: 4px solid var(--fio); padding-left: 14px; margin-bottom: 28px; }
+  h1 {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 1.5rem; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 4px; color: var(--graf);
+  }
+  header p { margin: 0; color: var(--cinza); font-size: 0.98rem; }
+  ol { list-style: none; margin: 0; padding: 0; }
+  li {
+    background: var(--cartao); border: 1px solid #D9D3C8; border-radius: 6px;
+    padding: 18px 16px; margin-bottom: 16px; position: relative;
+  }
+  li::before {
+    content: ""; position: absolute; left: 0; top: 18px; bottom: 18px; width: 3px; background: var(--fio);
+  }
+  h2 {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 1.08rem; font-weight: 700; margin: 0 0 6px; color: var(--graf);
+  }
+  li p { margin: 0 0 14px; font-size: 0.98rem; }
+  a.botao {
+    display: block; text-align: center; text-decoration: none;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-weight: 700; font-size: 1rem; color: #FFFFFF; background: var(--fio);
+    border-radius: 4px; padding: 13px 12px;
+  }
+  a.botao:hover, a.botao:focus-visible { background: var(--fio-escuro); }
+  a.botao:focus-visible { outline: 3px solid var(--graf); outline-offset: 2px; }
+  footer { margin-top: 24px; font-size: 0.88rem; color: var(--cinza); border-top: 1px solid #CFC8BC; padding-top: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Puxando o Fio · produtos dos vídeos</h1>
+    <p>Como as coisas funcionam por dentro. O link de cada produto que aparece nos vídeos.</p>
+  </header>
+  <ol>
+    <li>
+      <h2>Moedor de café Hamilton Beach</h2>
+      <p>No fundo do copo há uma lâmina movida por um motor de 150 watts. Quando ela gira, bate no grão e o joga contra a parede do copo.</p>
+      <a class="botao" href="https://meli.la/1rwicCP" rel="sponsored noopener noreferrer">Ver o moedor no Mercado Livre</a>
+    </li>
+    <li>
+      <h2>Torneira gourmet Camperluz</h2>
+      <p>Com cerca de 90 graus de giro, o disco móvel cobre os furos, e a água para.</p>
+      <a class="botao" href="https://meli.la/2iEuBq9" rel="sponsored noopener noreferrer">Ver a torneira no Mercado Livre</a>
+    </li>
+    <li>
+      <h2>Multiprocessador 2 litros, inox</h2>
+      <p>A cada volta, cada uma das quatro lâminas faz um círculo inteiro dentro do copo.</p>
+      <a class="botao" href="https://meli.la/26ar6rh" rel="sponsored noopener noreferrer">Ver o multiprocessador no Mercado Livre</a>
+    </li>
+  </ol>
+  <footer>
+    <p>Links de afiliado do Mercado Livre: posso receber comissão se você comprar. Preço e estoque podem mudar; confira no anúncio.</p>
+  </footer>
+</main>
+</body>
+</html>
