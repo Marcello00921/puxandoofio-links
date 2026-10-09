@@ -1,0 +1,5 @@
+# coleta da central (traz comissão e notas internas; o repo é público). Origem: agrodoc/tools/explicador/afiliado_links.md
+produtos.json
+# provas do teste no Playwright (ficam na máquina)
+_capturas/
+__pycache__/
