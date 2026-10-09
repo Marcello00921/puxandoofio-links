@@ -56,6 +56,7 @@ DOS_VIDEOS = [
     ("2fu22GV", "Ar-condicionado LG Inverter", "eletrodomesticos", "MLB-5245309349",
      "https://http2.mlstatic.com/D_NQ_NP_751254-MLA111545505029_052026-O.webp"),
 ]
+COM_POST = {"1rwicCP", "2iEuBq9", "26ar6rh", "1AScefL"}  # moedor, torneira, multiprocessador, chuveiro
 
 # Título curto (sem promessa do vendedor: "sem CNH", "tira atraso", "antimofo", "original"...) e categoria,
 # por código do meli.la. None = fora da página, com a razão.
@@ -114,7 +115,7 @@ CURTO = {
     "1Hmbnbt": ("Jogo de panelas cerâmicas para indução, 10 peças", "cozinha"),
     "1v3Sg8a": ("Piscina playground dinossauro Intex", "games"),
     "2GJ81RE": ("Martelete perfurador rompedor 1.300 W", "ferramentas"),
-    "2CoGgN6": ("Purificador de água IBBL E-due", "eletrodomesticos"),
+    "2CoGgN6": None,  # 09/10 refutador: REVIEW saude_regulada na coleta; fora do anúncio pago
     "2wesnnh": ("Purificador de água Midea SlimPure", "eletrodomesticos"),
     "2HaDjRs": ("Rádio automotivo Pioneer com Bluetooth", "automotivo"),
     "2fCmEom": ("Kit frente Titan 2025 para CG 160", "automotivo"),
@@ -140,7 +141,7 @@ CURTO = {
     "14Y6TNV": ("Caixa de areia fechada para gato, em aço", "pet"),
     "2nmP3FC": ("Piscina inflável Mor Splash Fun 2.400 L", "games"),
     "1mH7zn2": ("Palmeira artificial de 1 metro com vaso", "casa"),
-    "2KawELS": ("Videogame portátil Oasis", "games"),
+    "2KawELS": None,  # 09/10 refutador: provável jogo pré-carregado (réplica/pirataria não descartada)
     "32AYhcg": ("Petisco Churu para gatos, kit com 6", "pet"),
 }
 
@@ -162,7 +163,9 @@ def montar_itens():
     dados = json.loads((AQUI / "produtos.json").read_text(encoding="utf-8"))
     itens, fora, erros = [], [], []
     for cod, titulo, cat, mlb, foto in DOS_VIDEOS:
-        itens.append({"cod": cod, "titulo": titulo, "cat": cat, "video": True, "mlb": mlb, "foto": foto_320(foto)})
+        # 09/10 · refutador: só 4 têm post publicado (grep '"publicado": true' saida/diretor/af_*/publicar.json);
+        # selo "Do vídeo" em produto sem post é texto enganoso para anúncio pago
+        itens.append({"cod": cod, "titulo": titulo, "cat": cat, "video": cod in COM_POST, "mlb": mlb, "foto": foto_320(foto)})
     vistos = {i["cod"] for i in itens}
     for p in dados:
         cod = p["link"].rsplit("/", 1)[-1]
@@ -315,7 +318,7 @@ def gerar(itens):
   <p id="vazio" class="vazio" hidden>Nenhum produto com esse nome. Tente outra palavra ou outra categoria.</p>
   <footer>
     <p><strong>Quem mantém esta página:</strong> Puxando o Fio, canal de vídeos que explica como as coisas funcionam por dentro. Contato: <a href="https://www.tiktok.com/@puxandoofioo" rel="noopener">@puxandoofioo no TikTok</a>.</p>
-    <p>Esta página não vende nem entrega nada. A venda é feita no Mercado Livre: preço, frete, estoque, troca, devolução e garantia são os do anúncio no dia da compra. Fotos e nomes vêm dos próprios anúncios.</p>
+    <p>Esta página não vende nem entrega nada. A venda é feita no Mercado Livre: preço, frete, estoque, troca, devolução e garantia são os do anúncio no dia da compra. As fotos vêm dos próprios anúncios; os nomes foram resumidos.</p>
     <p>Sem cookies e sem rastreadores nesta página.</p>
   </footer>
 </main>
