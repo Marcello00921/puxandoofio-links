@@ -1,17 +1,33 @@
 """Gera index.html (página da bio do Puxando o Fio) a partir de produtos.json + os 8 produtos dos vídeos.
 
-Uso:  python _gerar.py            -> reescreve index.html
-      python _gerar.py --conferir -> só confere (rc 1 se faltar título curto, categoria ou link)
+Uso:  python _gerar.py                 -> lê preço, contador e vendidos, grava _estado.json e reescreve index.html
+      python _gerar.py --sem-contador  -> idem, sem ler o contador (ficam os cliques do _estado.json anterior)
+      python _gerar.py --conferir      -> só confere (rc 1 se faltar título curto, categoria ou link)
 
 produtos.json fica FORA do commit (traz comissão e notas internas; o repo é público). A origem dele é a
 coleta da central de afiliados registrada em agrodoc/tools/explicador/afiliado_links.md (09/10/2026).
-O prefixo "_" deixa este arquivo fora do site publicado pelo GitHub Pages (Jekyll ignora "_*").
+O prefixo "_" deixa este arquivo, _precos.json e _estado.json fora do site publicado (Jekyll ignora "_*").
+_estado.json é a fotografia do que a página mostra além de produtos.json (preço válido, pausados, cliques, vendidos,
+hora): gerar() é função dela, então gerar(itens, NS, rec) reproduz o index.html byte a byte (a conferência do
+contador compara assim).
 
-Regras da página (pedido do Marcello, 09/10, boost da landing no TikTok):
-- sem preço fixo ("ver preço no Mercado Livre"): preço muda e anúncio pago com preço velho engana;
-- #publi + aviso de afiliado + rótulo de IA do canal visíveis no topo;
-- foto real do anúncio (mlstatic, variante quadrada 320 px), sem editar;
-- sem script de terceiro, sem cookie, sem pop-up.
+Regras da página (pedido do Marcello, 09/10, boost da landing no TikTok; 12/10: "mais comercial pro pessoal que
+clicar no tiktok, com preço, oferta imperdível, coisas que tem um CTA forte"). Fontes lidas em 12/10:
+agrodoc saida/explicador/vitrine_comercial_12out/fontes_regras.md.
+- selo "Publicidade · links de afiliado" no topo, visível sem clique, mais o rótulo de IA do canal (CONAR, guia de
+  influenciadores 1.1.1; termos do ML Afiliados 5.1);
+- preço só o lido na API oficial do ML (agrodoc tools/explicador/vitrine_precos.py), com a hora da leitura no cartão
+  ("preço de DD/MM, HHh · pode mudar"). Com mais de 24 h, o gerador não mostra e o JS da página esconde (a página
+  pode ficar no ar sem o gerador rodar). Sem leitura válida, o cartão diz "preço e frete atualizados no Mercado
+  Livre" (termos 5.4: só o que o anúncio diz; CDC arts. 30 e 37);
+- preço riscado e "% OFF" só com o preço anterior do próprio ML; SELO_OFERTA só em desconto do ML ≥ SELO_OFERTA_MIN;
+  parcela não aparece (a API de item não dá, e o Decreto 5.903 art. 3º pede total, número e valor);
+- anúncio pausado, encerrado ou sem estoque na última leitura válida sai da página;
+- meli.la exatamente como o ML gerou, sem parâmetro (termos 1.8); o botão diz que o destino é o Mercado Livre, sem
+  logotipo nem cara de loja do ML;
+- foto real do anúncio (mlstatic), sem editar; sem cookie, sem pop-up, sem script de terceiro;
+- ordem da grade: mais clicados (contador) no topo; depois os dos vídeos, o maior desconto do ML e os mais vendidos
+  ("+N vendidos" da coleta da central: número que o próprio anúncio mostra e que só cresce).
 
 Contador (12/10, meta do Marcello: o 1º R$ de afiliado sem mão dele; o funil de 12/10 não via visita nem clique):
 - Abacus (abacus.jasoncameron.dev, docs lidas em 12/10): grátis, sem cadastro, sem chave para /hit e /get, CORS
@@ -42,6 +58,11 @@ CONTADOR = "https://abacus.jasoncameron.dev"
 NS = "puxandoofio-links"
 NS_TESTE = "puxandoofio-links-teste"
 RECENTES = 3
+ESTADO = AQUI / "_estado.json"
+BRT = dt.timezone(dt.timedelta(hours=-3))
+# "Oferta imperdível" (palavra do Marcello, 12/10) só em desconto do PRÓPRIO ML a partir deste %. None desliga: os
+# termos do ML Afiliados (5.4) limitam o post ao que o anúncio diz, e o selo é adjetivo nosso sobre esse desconto.
+SELO_OFERTA, SELO_OFERTA_MIN = "Oferta imperdível", 20
 
 # Categorias da página, na ordem dos chips.
 CATS = {
@@ -187,7 +208,8 @@ def montar_itens():
     for cod, titulo, cat, mlb, foto in DOS_VIDEOS:
         # 09/10 · refutador: só 4 têm post publicado (grep '"publicado": true' saida/diretor/af_*/publicar.json);
         # selo "Do vídeo" em produto sem post é texto enganoso para anúncio pago
-        itens.append({"cod": cod, "titulo": titulo, "cat": cat, "video": cod in COM_POST, "mlb": mlb, "foto": foto_320(foto)})
+        itens.append({"cod": cod, "titulo": titulo, "cat": cat, "video": cod in COM_POST, "mlb": mlb, "foto": foto_320(foto),
+                      "foto_grande": foto})
     vistos = {i["cod"] for i in itens}
     for p in dados:
         cod = p["link"].rsplit("/", 1)[-1]
@@ -203,7 +225,8 @@ def montar_itens():
         if cod in vistos:
             erros.append(f"link repetido {cod}")
         vistos.add(cod)
-        itens.append({"cod": cod, "titulo": titulo, "cat": cat, "video": False, "mlb": p["mlb"], "foto": foto_320(p["foto"])})
+        itens.append({"cod": cod, "titulo": titulo, "cat": cat, "video": False, "mlb": p["mlb"], "foto": foto_320(p["foto"]),
+                      "foto_grande": p["foto"]})
     sobra = set(CURTO) - {p["link"].rsplit("/", 1)[-1] for p in dados}
     if sobra:
         erros.append(f"títulos curtos sem produto: {sorted(sobra)}")
@@ -258,51 +281,82 @@ def recentes(itens, agrodoc: Path = AGRODOC, n: int = RECENTES) -> list:
     return out[:n]
 
 
+# 12/10 · contraste (WCAG AA, texto ≥ 4,5:1): branco sobre --cta 5,9:1, sobre --fio 7,9:1; --verde 5,4:1 e --cinza
+# 7,0:1 sobre branco. Botão ≥ 52 px de altura (o portão do agrodoc cobra ≥ 48 px a 375 px).
 CSS = """
-:root{--papel:#ECE8E1;--cartao:#F7F4EE;--tinta:#1F1D1A;--graf:#2E2B27;--cinza:#5F584F;--linha:#D9D3C8;--fio:#A3121E;--fio-escuro:#5E0810}
+:root{--papel:#F4F1EA;--cartao:#fff;--tinta:#1F1D1A;--graf:#2E2B27;--cinza:#5F584F;--linha:#DDD6CA;--fio:#A3121E;--cta:#C8102E;--cta-escuro:#8E0A1F;--verde:#0A7A3D}
 *{box-sizing:border-box}
 html,body{margin:0}
-body{background:var(--papel);color:var(--tinta);font-family:Georgia,"Times New Roman",serif;line-height:1.45;-webkit-text-size-adjust:100%}
-.sans{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
-main{max-width:1180px;margin:0 auto;padding:20px 16px 40px}
-header{border-left:4px solid var(--fio);padding-left:12px;margin-bottom:14px}
-h1{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;margin:0;color:var(--graf)}
-header p{margin:2px 0 0;color:var(--cinza);font-size:1rem}
-.aviso{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:.86rem;background:var(--cartao);border:1px solid var(--linha);border-radius:6px;padding:9px 12px;margin:0 0 12px;color:var(--graf)}
-.aviso strong{color:var(--fio)}
-.barra{display:none;position:sticky;top:0;z-index:2;background:var(--papel);padding:8px 0 10px;margin:0 -16px 6px;padding-left:16px;padding-right:16px;border-bottom:1px solid var(--linha)}
+body{background:var(--papel);color:var(--tinta);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.4;-webkit-text-size-adjust:100%}
+.publi{margin:0;background:var(--tinta);color:#fff;font-size:.8rem;line-height:1.35;padding:8px 16px;text-align:center}
+.publi strong{color:#FFD9A8}
+main{max-width:1180px;margin:0 auto;padding:14px 16px 40px}
+header{border-left:4px solid var(--fio);padding-left:12px;margin-bottom:16px}
+h1{font-size:1.35rem;font-weight:800;letter-spacing:-.01em;margin:0;color:var(--graf);line-height:1.2}
+header p{margin:2px 0 0;color:var(--cinza);font-size:.92rem}
+header .ia{font-size:.78rem}
+h2.titulo{font-size:1.1rem;font-weight:800;color:var(--graf);margin:0 0 10px}
+.sub{margin:-6px 0 10px;font-size:.78rem;color:var(--cinza)}
+.recente,.ofertas{margin:0 0 22px}
+.destaque{background:var(--cartao);border:2px solid var(--cta);border-radius:12px;overflow:hidden;margin:0 0 12px;position:relative}
+.destaque .foto{display:block;background:#fff;height:230px}
+.destaque .foto img{display:block;width:100%;height:100%;object-fit:contain}
+.destaque .corpo{padding:10px 12px 12px}
+.destaque h3{font-size:1.15rem;line-height:1.25}
+.selo-video{align-self:flex-start;margin:0 0 6px;background:var(--fio);color:#fff;font-size:.75rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;border-radius:4px;padding:3px 8px}
+@media (min-width:640px){.destaque{display:grid;grid-template-columns:320px 1fr}.destaque .foto{height:320px}.destaque .corpo{padding:18px}}
+.trilho{list-style:none;margin:0;padding:0 0 6px;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(150px,46%);gap:10px;overflow-x:auto;scroll-snap-type:x proximity}
+@media (min-width:640px){.trilho{grid-auto-columns:210px}}
+.card,.mini{background:var(--cartao);border:1px solid var(--linha);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;position:relative}
+.mini{scroll-snap-align:start}
+.card[hidden],.ofertas[hidden]{display:none}
+.card .foto,.mini .foto{display:block;background:#fff;aspect-ratio:1/1}
+.card .foto img,.mini .foto img{display:block;width:100%;height:100%;object-fit:contain}
+.tags{position:absolute;top:8px;left:8px;display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.tag{font-size:.7rem;font-weight:800;letter-spacing:.02em;background:var(--fio);color:#fff;border-radius:4px;padding:2px 7px}
+.tag.quente{background:var(--cta)}
+.corpo{padding:9px 10px 10px;display:flex;flex-direction:column;flex:1}
+h3{font-size:.92rem;font-weight:700;line-height:1.3;margin:0 0 6px;color:var(--graf);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.oferta{margin:0 0 6px}
+.preco{margin:0;font-size:1.35rem;font-weight:800;line-height:1.15;letter-spacing:-.01em;color:var(--tinta)}
+.antes{margin:2px 0 0;font-size:.82rem;color:#6B645A}
+.off{color:var(--verde);font-weight:800;margin-left:6px}
+.frete{margin:2px 0 0;font-size:.82rem;font-weight:700;color:var(--verde)}
+.quando{margin:3px 0 0;font-size:.75rem;color:var(--cinza)}
+.neutro{margin:0 0 6px;font-size:.86rem;color:var(--cinza)}
+.oferta+.neutro,.expirou .oferta,.expirou .tag.quente{display:none}
+.expirou .oferta+.neutro{display:block}
+.vendidos{margin:0 0 8px;font-size:.8rem;color:var(--cinza)}
+a.botao{margin-top:auto;display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:52px;text-align:center;text-decoration:none;font-weight:800;font-size:1rem;line-height:1.15;color:#fff;background:var(--cta);border-radius:8px;padding:8px 6px;box-shadow:0 2px 0 var(--cta-escuro)}
+a.botao span{font-weight:600;font-size:.78rem}
+a.botao:hover,a.botao:focus-visible{background:var(--cta-escuro)}
+a.botao:focus-visible{outline:3px solid var(--graf);outline-offset:2px}
+.destaque a.botao{min-height:56px;font-size:1.1rem}
+.barra{display:none;position:sticky;top:0;z-index:2;background:var(--papel);padding:8px 16px 10px;margin:0 -16px 6px;border-bottom:1px solid var(--linha)}
 .js .barra{display:block}
-.busca{width:100%;font:inherit;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:1rem;padding:10px 12px;border:1px solid #BDB5A8;border-radius:6px;background:#fff;color:var(--tinta)}
+.busca{width:100%;font:inherit;font-size:1rem;padding:11px 12px;border:1px solid #A8A092;border-radius:8px;background:#fff;color:var(--tinta)}
 .busca:focus-visible{outline:3px solid var(--fio);outline-offset:1px}
 .chips{display:flex;gap:8px;overflow-x:auto;padding-top:8px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .chips::-webkit-scrollbar{display:none}
-.chip{flex:0 0 auto;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:.86rem;font-weight:600;border:1px solid #BDB5A8;background:var(--cartao);color:var(--graf);border-radius:999px;padding:7px 12px;cursor:pointer}
+.chip{flex:0 0 auto;font:inherit;font-size:.86rem;font-weight:650;border:1px solid #A8A092;background:var(--cartao);color:var(--graf);border-radius:999px;padding:8px 13px;cursor:pointer}
 .chip[aria-pressed="true"]{background:var(--graf);border-color:var(--graf);color:#fff}
 .chip:focus-visible{outline:3px solid var(--fio);outline-offset:1px}
-.chip span{font-weight:400;opacity:.75}
-.contagem{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:.82rem;color:var(--cinza);margin:6px 0 10px}
+.chip span{font-weight:400}
+.contagem{font-size:.82rem;color:var(--cinza);margin:6px 0 10px}
 .grade{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 @media (min-width:640px){.grade{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}}
 @media (min-width:900px){.grade{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (min-width:1140px){.grade{grid-template-columns:repeat(5,minmax(0,1fr))}}
-.card{background:var(--cartao);border:1px solid var(--linha);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;position:relative}
-.card[hidden]{display:none}
-.foto{display:block;background:#fff;aspect-ratio:1/1}
-.foto img{display:block;width:100%;height:100%;object-fit:contain}
-.tag{position:absolute;top:8px;left:8px;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:.7rem;font-weight:700;letter-spacing:.02em;background:var(--fio);color:#fff;border-radius:3px;padding:2px 6px}
-.corpo{padding:9px 10px 10px;display:flex;flex-direction:column;flex:1}
-.card h2{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:.9rem;font-weight:650;line-height:1.3;margin:0 0 4px;color:var(--graf);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.preco{font-size:.8rem;color:var(--cinza);margin:0 0 9px;flex:1}
-a.botao{display:block;text-align:center;text-decoration:none;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-weight:700;font-size:.86rem;line-height:1.25;color:#fff;background:var(--fio);border-radius:5px;padding:10px 6px}
-a.botao:hover,a.botao:focus-visible{background:var(--fio-escuro)}
-a.botao:focus-visible{outline:3px solid var(--graf);outline-offset:2px}
-.vazio{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--cinza);padding:24px 0;text-align:center}
+.vazio{color:var(--cinza);padding:24px 0;text-align:center}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 footer{margin-top:28px;font-size:.88rem;color:var(--cinza);border-top:1px solid #CFC8BC;padding-top:14px;max-width:720px}
 footer p{margin:0 0 8px}
-footer a{color:var(--fio-escuro)}
-.recente{margin:0 0 14px}
-.recente h2.titulo{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:1rem;font-weight:800;color:var(--graf);margin:0 0 8px}
-.recente .grade{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+footer a{color:#5E0810}
+.aviso{font-size:.86rem;background:var(--cartao);border:1px solid var(--linha);border-radius:6px;padding:9px 12px;margin:0 0 12px;color:var(--graf)}
+.aviso strong{color:var(--fio)}
+.produto .foto{display:block;background:#fff;aspect-ratio:1/1}
+.produto .foto img{display:block;width:100%;height:100%;object-fit:contain}
+.produto .preco{font-size:.86rem;font-weight:400;color:var(--cinza)}
 """
 
 # Contador (ver docstring). `__NS__` é trocado pelo namespace na geração. O clique NÃO tem preventDefault: o link segue
@@ -501,6 +555,12 @@ REL = "sponsored noopener"          # sem "noreferrer": ele também apagava o re
 
 JS = """
 (function(){
+  // preço com mais de 24 h some: a página pode ficar no ar sem o gerador rodar (regra no docstring)
+  var LIM=864e5, agora=Date.now();
+  [].forEach.call(document.querySelectorAll('[data-em]'),function(p){
+    if(!(agora-Date.parse(p.getAttribute('data-em'))<LIM)){var c=p.closest('[data-cod]');if(c){c.className+=' expirou';}}
+  });
+  [].forEach.call(document.querySelectorAll('.ofertas'),function(s){if(!s.querySelector('.mini:not(.expirou)')){s.hidden=true;}});
   var sem=function(s){return s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();};
   var cards=[].slice.call(document.querySelectorAll('#grade .card'));
   var chips=[].slice.call(document.querySelectorAll('.chip'));
@@ -530,45 +590,215 @@ JS = """
 """
 
 
-def _card(i, n, e=html.escape):
-    href = f"https://meli.la/{i['cod']}"
-    cats = i["cat"] + (" videos" if i["video"] else "")
+def _mlb(i) -> str:
+    return i["mlb"].replace("-", "").upper()
+
+
+def reais(v: float) -> str:
+    """1299.9 -> 'R$ 1.299,90'; 1299.0 -> 'R$ 1.299' (centavo só quando há, como o ML mostra)."""
+    inteiro, cent = divmod(round(v * 100), 100)
+    return f"R$ {inteiro:,}".replace(",", ".") + (f",{cent:02d}" if cent else "")
+
+
+def vendidos_txt(n: int) -> str:
+    return f"+{n // 1000} mil vendidos" if n >= 10000 else f"+{n:,} vendidos".replace(",", ".")
+
+
+def ler_estado() -> dict:
+    try:
+        return json.loads(ESTADO.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def montar_estado(itens, ler_contador=True, anterior=None) -> dict:
+    """Fotografia do que a página mostra além de produtos.json (vira _estado.json). Fonte que falta (sem agrodoc ao
+    lado, sem token do ML, contador fora) deixa o campo vazio: a página cai no texto neutro, nunca em número chutado."""
+    anterior = anterior or {}
+    agora = dt.datetime.now(BRT)
+    est = {"gerado_em": agora.isoformat(timespec="seconds"), "precos": {}, "fora": {}, "cliques": {},
+           "cliques_lido_em": None, "vendidos": {}, "vendidos_de": None}
+    cod_de = {_mlb(i): i["cod"] for i in itens}
+    sys.path.insert(0, str(AGRODOC / "tools" / "explicador"))
+    try:
+        try:
+            import vitrine_precos as vp  # validade e "sai da vitrine": uma regra só, a do leitor de preço
+            for m, r in (vp.carregar().get("itens") or {}).items():
+                c = cod_de.get(m)
+                if c and vp.vale(r, agora):
+                    razao = vp.fora_da_vitrine(r)
+                    if razao:
+                        est["fora"][c] = razao
+                    else:
+                        est["precos"][c] = r
+        except ImportError:
+            pass
+        if ler_contador:
+            try:
+                import vitrine_contador as vc
+                lido = vc.ler()
+                if lido.get("cliques") is not None:
+                    est["cliques"], est["cliques_lido_em"] = lido["por_produto"], lido["lido_em"]
+                else:
+                    print("contador:", lido.get("motivo"))
+            except ImportError:
+                pass
+    finally:
+        sys.path.pop(0)
+    if not est["cliques_lido_em"]:
+        est["cliques"], est["cliques_lido_em"] = anterior.get("cliques") or {}, anterior.get("cliques_lido_em")
+    try:
+        for linha in (AGRODOC / "tools" / "explicador" / "afiliado_ml_produtos.jsonl").read_text(encoding="utf-8").splitlines():
+            j = json.loads(linha)
+            c = cod_de.get(str(j.get("id", "")).replace("-", "").upper())
+            if c and j.get("vendidos_min"):
+                est["vendidos"][c] = int(j["vendidos_min"])
+                est["vendidos_de"] = max(est["vendidos_de"] or "", str(j.get("coletado") or "")[:10]) or None
+    except (OSError, ValueError):
+        pass
+    return est
+
+
+def ordenar(itens, est, videos) -> list:
+    """Grade: mais clicados no topo; depois os dos vídeos, o maior desconto do ML e os mais vendidos. Empate fica na
+    ordem de montar_itens (estável e sem acaso: a conferência do contador compara o HTML byte a byte)."""
+    cl, pr, ve = est.get("cliques") or {}, est.get("precos") or {}, est.get("vendidos") or {}
+
+    def chave(par):
+        n, i = par
+        c = i["cod"]
+        return -cl.get(c, 0), c not in videos, -((pr.get(c) or {}).get("desconto_pct") or 0), -ve.get(c, 0), n
+    return [i for _n, i in sorted(enumerate(itens), key=chave)]
+
+
+def _preco(cod, est, e=html.escape) -> str:
+    """Preço lido na API (com a hora) ou o texto neutro. O neutro vai sempre junto: o CSS o mostra quando o JS da
+    página expira o preço (mais de 24 h)."""
+    neutro = '<p class="neutro">Preço e frete atualizados no Mercado Livre</p>'
+    r = (est.get("precos") or {}).get(cod)
+    if not r:
+        return neutro
+    lido = dt.datetime.fromisoformat(r["lido_em"]).astimezone(BRT)
+    out = [f'<div class="oferta"><p class="preco" data-preco="{r["preco"]}" data-em="{e(r["lido_em"])}">'
+           f'<span class="sr">Preço: </span>{reais(r["preco"])}</p>']
+    if r.get("preco_antes") and r.get("desconto_pct"):
+        out.append(f'<p class="antes"><s data-antes="{r["preco_antes"]}"><span class="sr">Preço anterior: </span>'
+                   f'{reais(r["preco_antes"])}</s><span class="off" data-off="{r["desconto_pct"]}">'
+                   f'{r["desconto_pct"]}% OFF</span></p>')
+    if r.get("frete_gratis") is True:
+        out.append('<p class="frete">Frete grátis</p>')
+    out.append(f'<p class="quando">Preço de {lido:%d/%m}, {lido.hour}h · pode mudar</p></div>{neutro}')
+    return "".join(out)
+
+
+def _tags(i, est, videos) -> str:
+    """videos vazio = sem a etiqueta "Do vídeo" (no bloco "Produtos dos vídeos" ela só repetiria o título)."""
+    t = ['<span class="tag">Do vídeo</span>'] if i["cod"] in videos else []
+    r = (est.get("precos") or {}).get(i["cod"])
+    if SELO_OFERTA and r and (r.get("desconto_pct") or 0) >= SELO_OFERTA_MIN:
+        t.append(f'<span class="tag quente">{html.escape(SELO_OFERTA)}</span>')
+    return f'<div class="tags">{"".join(t)}</div>' if t else ""
+
+
+def _vendidos(cod, est) -> str:
+    n = (est.get("vendidos") or {}).get(cod)
+    return f'<p class="vendidos">{vendidos_txt(n)}</p>' if n else ""
+
+
+def _cta(href, cod) -> str:
+    return f'<a class="botao" href="{href}" data-cod="{cod}" rel="{REL}">Ver oferta <span>no Mercado Livre</span></a>'
+
+
+def _foto(href, cod, src, titulo, lado=320, carga='loading="lazy"', e=html.escape) -> str:
+    return (f'<a class="foto" href="{href}" data-cod="{cod}" rel="{REL}" tabindex="-1" aria-hidden="true">'
+            f'<img src="{e(src)}" width="{lado}" height="{lado}" {carga} decoding="async" alt="{e(titulo)}"></a>')
+
+
+def _card(i, est, videos, cliques, e=html.escape) -> str:
+    href, cod = f"https://meli.la/{i['cod']}", e(i["cod"])
+    cats = i["cat"] + (" videos" if i["cod"] in videos else "") + (" mais" if cliques.get(i["cod"]) else "")
     q = sem_acento(i["titulo"] + " " + CATS[i["cat"]])
-    carga = 'loading="eager" fetchpriority="high"' if n < 4 else 'loading="lazy"'
-    tag = '<span class="tag">Do vídeo</span>' if i["video"] else ""
-    cod = e(i["cod"])
-    return (f'<li class="card" data-cat="{cats}" data-q="{e(q)}" data-mlb="{e(i["mlb"])}">'
-            f'<a class="foto" href="{href}" data-cod="{cod}" rel="{REL}" tabindex="-1" aria-hidden="true">'
-            f'<img src="{e(i["foto"])}" width="320" height="320" {carga} decoding="async" alt="{e(i["titulo"])}"></a>{tag}'
-            f'<div class="corpo"><h2>{e(i["titulo"])}</h2><p class="preco">Ver preço no Mercado Livre</p>'
-            f'<a class="botao" href="{href}" data-cod="{cod}" rel="{REL}">Ver no Mercado Livre</a></div></li>')
+    return (f'<li class="card" data-cat="{cats}" data-q="{e(q)}" data-mlb="{_mlb(i)}" data-cod="{cod}">'
+            f'{_foto(href, cod, i["foto"], i["titulo"])}{_tags(i, est, videos)}'
+            f'<div class="corpo"><h3>{e(i["titulo"])}</h3>{_preco(i["cod"], est)}{_vendidos(i["cod"], est)}'
+            f'{_cta(href, cod)}</div></li>')
 
 
-def _bloco_recente(itens, rec) -> str:
+def _mini(i, est, videos, e=html.escape) -> str:
+    href, cod = f"https://meli.la/{i['cod']}", e(i["cod"])
+    return (f'<li class="mini" data-mlb="{_mlb(i)}" data-cod="{cod}">{_foto(href, cod, i["foto"], i["titulo"])}'
+            f'{_tags(i, est, videos)}<div class="corpo"><h3>{e(i["titulo"])}</h3>{_preco(i["cod"], est)}'
+            f'{_cta(href, cod)}</div></li>')
+
+
+def _destaque(i, est, e=html.escape) -> str:
+    href, cod = f"https://meli.la/{i['cod']}", e(i["cod"])
+    return (f'<article class="destaque" data-mlb="{_mlb(i)}" data-cod="{cod}">'
+            f'{_foto(href, cod, i["foto_grande"], i["titulo"], 500, "fetchpriority=" + chr(34) + "high" + chr(34))}'
+            f'<div class="corpo"><p class="selo-video">Do vídeo mais recente</p><h3>{e(i["titulo"])}</h3>'
+            f'{_preco(i["cod"], est)}{_vendidos(i["cod"], est)}{_cta(href, cod)}</div></article>')
+
+
+def _bloco_recente(itens, rec, est, videos) -> str:
+    """'Produtos dos vídeos': o do post mais recente em destaque; depois os outros com post, o mais novo primeiro
+    (os do log da esteira e, na ordem de DOS_VIDEOS, os com post conferido em 09/10). Sem post achado, não há bloco."""
     por_cod = {i["cod"]: i for i in itens}
-    cards = [_card(por_cod[r["cod"]], 0) for r in rec or [] if r["cod"] in por_cod]
-    if not cards:
+    ordem = [r["cod"] for r in rec or [] if r["cod"] in por_cod]
+    if not ordem:
         return ""
+    ordem += [t[0] for t in DOS_VIDEOS if t[0] in COM_POST and t[0] in por_cod and t[0] not in ordem]
+    resto = "".join(_mini(por_cod[c], est, set()) for c in ordem[1:])
     return ('  <section class="recente" aria-labelledby="t-recente">\n'
-            '    <h2 class="titulo" id="t-recente">Do vídeo mais recente</h2>\n'
-            f'    <ul class="grade">{"".join(cards)}</ul>\n  </section>\n')
+            '    <h2 class="titulo" id="t-recente">Produtos dos vídeos</h2>\n'
+            f'    {_destaque(por_cod[ordem[0]], est)}\n'
+            + (f'    <ul class="trilho" aria-label="Outros produtos dos vídeos">{resto}</ul>\n' if resto else "")
+            + '  </section>\n')
 
 
-def gerar(itens, ns=NS, rec=None):
+def _bloco_ofertas(itens, est, videos) -> str:
+    """Desconto do próprio ML (preço riscado lido na API), o maior primeiro. Sem desconto lido, não há bloco."""
+    pr = est.get("precos") or {}
+    com = sorted((i for i in itens if (pr.get(i["cod"]) or {}).get("desconto_pct")),
+                 key=lambda i: -pr[i["cod"]]["desconto_pct"])[:12]
+    if not com:
+        return ""
+    return ('  <section class="ofertas" aria-labelledby="t-ofertas">\n'
+            '    <h2 class="titulo" id="t-ofertas">Em oferta no Mercado Livre</h2>\n'
+            '    <p class="sub">Desconto que o próprio Mercado Livre mostra, na hora da leitura do preço.</p>\n'
+            f'    <ul class="trilho" aria-label="Produtos em oferta">{"".join(_mini(i, est, videos) for i in com)}</ul>\n'
+            '  </section>\n')
+
+
+def gerar(itens, ns=NS, rec=None, estado=None):
+    """index.html. estado=None lê _estado.json (assim gerar(itens, NS, rec) reproduz a página publicada)."""
     e = html.escape
     if not re.fullmatch(r"[A-Za-z0-9_.-]{3,64}", ns):
         raise ValueError(f"namespace fora do formato do Abacus: {ns}")
+    est = ler_estado() if estado is None else estado
+    fora = est.get("fora") or {}
+    itens = [i for i in itens if i["cod"] not in fora]
+    rec = [r for r in rec or [] if r["cod"] not in fora]
+    videos = set(COM_POST) | {r["cod"] for r in rec}
+    cliques = est.get("cliques") or {}
+    itens = ordenar(itens, est, videos)
     contagem = {k: 0 for k in CATS}
     for i in itens:
         contagem[i["cat"]] += 1
-    n_video = sum(1 for i in itens if i["video"])
-    chips = [f'<button type="button" class="chip" data-cat="todos" aria-pressed="true">Todos <span>{len(itens)}</span></button>',
-             f'<button type="button" class="chip" data-cat="videos" aria-pressed="false">Dos vídeos <span>{n_video}</span></button>']
+    n_video = sum(1 for i in itens if i["cod"] in videos)
+    n_mais = sum(1 for i in itens if cliques.get(i["cod"]))
+    chips = [f'<button type="button" class="chip" data-cat="todos" aria-pressed="true">Todos <span>{len(itens)}</span></button>']
+    if n_mais:
+        chips.append(f'<button type="button" class="chip" data-cat="mais" aria-pressed="false">Mais clicados <span>{n_mais}</span></button>')
+    chips.append(f'<button type="button" class="chip" data-cat="videos" aria-pressed="false">Dos vídeos <span>{n_video}</span></button>')
     for k, rot in CATS.items():
         if contagem[k]:
             chips.append(f'<button type="button" class="chip" data-cat="{k}" aria-pressed="false">{e(rot)} <span>{contagem[k]}</span></button>')
-    cards = [_card(i, n) for n, i in enumerate(itens)]
-    bloco = _bloco_recente(itens, rec)
+    cards = [_card(i, est, videos, cliques) for i in itens]
+    bloco = _bloco_recente(itens, rec, est, videos)
+    ofertas = _bloco_ofertas(itens, est, videos)
+    vendidos_de = est.get("vendidos_de")
+    nota_vendidos = (f' "+N vendidos" é o número que o anúncio mostrava em {vendidos_de[8:10]}/{vendidos_de[5:7]} '
+                     '(ele só cresce).') if vendidos_de else ""
     contador = js_contador(ns, "visita")
     verif = (f'<meta name="p:domain_verify" content="{e(PINTEREST_VERIFICACAO)}">\n' if PINTEREST_VERIFICACAO else "")
     return f"""<!doctype html>
@@ -578,31 +808,34 @@ def gerar(itens, ns=NS, rec=None):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="{REFERRER}">
 <meta name="robots" content="noindex">
-<title>Puxando o Fio · produtos no Mercado Livre</title>
+<title>Puxando o Fio · produtos dos vídeos no Mercado Livre</title>
 <meta name="description" content="Os produtos dos vídeos do Puxando o Fio e outros achados, com o link de cada um no Mercado Livre.">
 {verif}<link rel="preconnect" href="https://http2.mlstatic.com">
 <script>document.documentElement.className+=' js';</script>
 <style>{CSS}</style>
 </head>
 <body>
+<p class="publi" id="publi"><strong>Publicidade · links de afiliado</strong> do Mercado Livre (#publi). Se você comprar por eles, o canal pode ganhar comissão, e o preço para você é o mesmo.</p>
 <main>
   <header>
     <h1>Puxando o Fio</h1>
     <p>Os produtos dos nossos vídeos e outros achados, com o link de cada um no Mercado Livre.</p>
+    <p class="ia">Os vídeos do canal têm narração com voz sintética (IA).</p>
   </header>
-  <p class="aviso"><strong>#publi</strong> · Links de afiliado: podemos receber comissão pelas compras. Os vídeos do canal têm narração com voz sintética (IA).</p>
-{bloco}  <div class="barra">
+{bloco}{ofertas}  <h2 class="titulo" id="t-todos">Todos os produtos</h2>
+  <div class="barra">
     <input id="busca" class="busca" type="search" placeholder="Buscar produto" aria-label="Buscar produto" autocomplete="off">
     <div class="chips" role="group" aria-label="Categorias">{''.join(chips)}</div>
   </div>
   <p id="contagem" class="contagem" aria-live="polite">{len(itens)} produtos</p>
-  <ul class="grade" id="grade">
+  <ul class="grade" id="grade" aria-labelledby="t-todos">
 {chr(10).join(cards)}
   </ul>
   <p id="vazio" class="vazio" hidden>Nenhum produto com esse nome. Tente outra palavra ou outra categoria.</p>
   <footer>
     <p><strong>Quem mantém esta página:</strong> Puxando o Fio, canal de vídeos que explica como as coisas funcionam por dentro. Contato: <a href="https://www.tiktok.com/@puxandoofioo" rel="noopener">@puxandoofioo no TikTok</a>.</p>
-    <p>Esta página não vende nem entrega nada. A venda é feita no Mercado Livre: preço, frete, estoque, troca, devolução e garantia são os do anúncio no dia da compra. As fotos vêm dos próprios anúncios; os nomes foram resumidos.</p>
+    <p>Esta página é do canal, não do Mercado Livre, e não vende nem entrega nada. A venda é feita no Mercado Livre: preço, frete, estoque, troca, devolução e garantia são os do anúncio no momento da compra.</p>
+    <p>Preço, preço riscado e "% OFF" só aparecem quando lidos na API oficial do Mercado Livre, com a data e a hora da leitura em cada produto; com mais de 24 horas, somem.{nota_vendidos} As fotos vêm dos próprios anúncios; os nomes foram resumidos.</p>
     <p>Sem cookies e sem dado pessoal: a página só soma quantas visitas e quantos cliques cada produto recebe, num contador público (Abacus).</p>
   </footer>
 </main>
@@ -617,15 +850,21 @@ def main():
     itens, fora, erros = montar_itens()
     for x in erros:
         print("ERRO:", x)
-    print(f"{len(itens)} produtos na página ({sum(i['video'] for i in itens)} dos vídeos); fora: {fora}")
+    print(f"{len(itens)} produtos na página ({sum(i['video'] for i in itens)} com post conferido em 09/10); fora: {fora}")
     if erros:
         return 1
     if "--conferir" in sys.argv:
         return 0
-    rec = recentes(itens)
-    print("do vídeo mais recente:", ", ".join(f"{r['cod']} ({r['tema']}, {r['postado'][:16]})" for r in rec)
-          or "nenhum post de afiliado achado (bloco fora)")
-    (AQUI / "index.html").write_text(gerar(itens, NS, rec), encoding="utf-8", newline="\n")
+    rec = recentes(itens, n=len(itens))
+    print("produtos dos vídeos (post mais recente primeiro):",
+          ", ".join(f"{r['cod']} ({r['tema']}, {r['postado'][:16]})" for r in rec) or "nenhum post de afiliado achado (bloco fora)")
+    est = montar_estado(itens, ler_contador="--sem-contador" not in sys.argv, anterior=ler_estado())
+    ESTADO.write_text(json.dumps(est, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8", newline="\n")
+    print(f"preço válido {len(est['precos'])} · com desconto do ML "
+          f"{sum(1 for r in est['precos'].values() if r.get('desconto_pct'))} · fora (pausado/sem estoque) "
+          f"{len(est['fora'])} · cliques {sum(est['cliques'].values())} ({est['cliques_lido_em']}) · "
+          f"vendidos {len(est['vendidos'])} ({est['vendidos_de']})")
+    (AQUI / "index.html").write_text(gerar(itens, NS, rec, est), encoding="utf-8", newline="\n")
     print("index.html gravado:", (AQUI / "index.html").stat().st_size, "bytes")
     pin = escrever_pinterest(itens)
     print(f"Pinterest: {pin['paginas']} páginas p/, {pin['no_feed']} no feed.xml (postados com capa), "
