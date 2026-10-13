@@ -1,8 +1,26 @@
 {
  "cliques": {},
- "cliques_lido_em": "2026-10-12T09:08-03:00",
+ "cliques_lido_em": "2026-10-13T01:47-03:00",
+ "fila": {
+  "cods": [
+   "26uyPHY",
+   "1CJZpoH",
+   "2ce9rap",
+   "2bHdFbq",
+   "1bqYJz9",
+   "1CPQeFQ",
+   "22fXv6p",
+   "2GvvMze",
+   "2UDwyp1",
+   "1EecBV9"
+  ],
+  "depois_de": [
+   "31yHAFH",
+   "18jgmtM"
+  ]
+ },
  "fora": {},
- "gerado_em": "2026-10-12T09:08:00-03:00",
+ "gerado_em": "2026-10-13T01:47:53-03:00",
  "precos": {},
  "vendidos": {
   "14Y6TNV": 1000,

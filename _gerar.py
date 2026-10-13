@@ -44,6 +44,14 @@ Bloco "Do vídeo mais recente" (12/10): quem vem da bio do TikTok procura o prod
 (dados/esteira/fila.json, link_ml) ou da pauta (tools/explicador/pauta_v2.json, link_ml). Só entra produto que JÁ está
 na página (passou pelo filtro da vitrine). Sem o agrodoc ao lado, o bloco não aparece. O bloco é fotografia da hora
 em que o gerador rodou: depois de um post novo, gerar de novo e empurrar.
+
+Fila no bloco (13/10, córtex): a legenda nova do afiliado diz 'Na vitrine do perfil, o item é "X"' (agrodoc
+saida/explicador/cta_perfil_12out.md), e a página só muda quando alguém roda este gerador. Por isso o bloco traz também
+os afiliados com render pronto na fila da esteira (estado render_ok), na ordem da fila (a de esteira.py --ver; o JEV
+pode trocar a vez na hora do post), logo depois dos posts do dia do destaque: quem chega depois do próximo post já
+acha o produto no topo. X tem de ser o título do cartão, letra por letra (rc 1 se não for). Até o post, sem selo
+"Do vídeo" e fora do chip "Dos vídeos" (09/10: selo em produto sem post é texto enganoso). A fila vai para
+_estado.json ("fila"), e gerar() segue função da fotografia.
 """
 import datetime as dt
 import html
@@ -279,6 +287,34 @@ def recentes(itens, agrodoc: Path = AGRODOC, n: int = RECENTES) -> list:
             vistos.add(p["cod"])
             out.append(p)
     return out[:n]
+
+
+def na_fila(itens, agrodoc: Path = AGRODOC, postados=()) -> list:
+    """Afiliados com render pronto na fila da esteira, na ordem da fila, que estão na página e ainda sem post.
+    [{"cod", "tema", "nome"}]; "nome" é o que a legenda nova cita ('o item é "X"'), None se ela não cita."""
+    try:
+        fila = json.loads((agrodoc / "dados" / "esteira" / "fila.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    its = fila.get("itens", fila) if isinstance(fila, dict) else fila
+    its = its if isinstance(its, list) else list(its.values()) if isinstance(its, dict) else []
+    na_pagina, ja = {i["cod"] for i in itens}, set(postados)
+    out = []
+    for it in sorted((i for i in its if isinstance(i, dict)), key=lambda i: i.get("ordem") or [999]):
+        cod = _cod(it.get("link_ml"))
+        if it.get("tipo") != "afiliado" or it.get("estado") != "render_ok" or cod not in na_pagina or cod in ja:
+            continue
+        ja.add(cod)
+        m = re.search(r'o item é "([^"]+)"', str(it.get("legenda_af") or ""))
+        out.append({"cod": cod, "tema": str(it.get("tema") or ""), "nome": m.group(1) if m else None})
+    return out
+
+
+def nomes_da_legenda(itens, fila) -> list:
+    """Quem vem da bio procura o nome que a legenda cita: ele tem de ser o título do cartão, letra por letra."""
+    titulo = {i["cod"]: i["titulo"] for i in itens}
+    return [f"legenda de {f['tema']} cita {f['nome']!r}, o cartão diz {titulo.get(f['cod'])!r}"
+            for f in fila if f["nome"] != titulo.get(f["cod"])]
 
 
 # 12/10 · contraste (WCAG AA, texto ≥ 4,5:1): branco sobre --cta 5,9:1, sobre --fio 7,9:1; --verde 5,4:1 e --cinza
@@ -739,14 +775,19 @@ def _destaque(i, est, e=html.escape) -> str:
             f'{_preco(i["cod"], est)}{_vendidos(i["cod"], est)}{_cta(href, cod)}</div></article>')
 
 
-def _bloco_recente(itens, rec, est, videos) -> str:
-    """'Produtos dos vídeos': o do post mais recente em destaque; depois os outros com post, o mais novo primeiro
-    (os do log da esteira e, na ordem de DOS_VIDEOS, os com post conferido em 09/10). Sem post achado, não há bloco."""
+def _bloco_recente(itens, rec, est, videos, fila=None) -> str:
+    """'Produtos dos vídeos', em ordem de postagem: o do post mais recente em destaque; depois os outros posts do dia
+    dele, os da fila da esteira (render pronto, na ordem da fila) e os posts mais antigos, o mais novo primeiro (os do
+    log da esteira e, na ordem de DOS_VIDEOS, os com post conferido em 09/10). Sem post achado, não há bloco."""
     por_cod = {i["cod"]: i for i in itens}
     ordem = [r["cod"] for r in rec or [] if r["cod"] in por_cod]
     if not ordem:
         return ""
     ordem += [t[0] for t in DOS_VIDEOS if t[0] in COM_POST and t[0] in por_cod and t[0] not in ordem]
+    fila = fila or {}
+    dia = set(fila.get("depois_de") or [])
+    k = max([n + 1 for n, c in enumerate(ordem) if c in dia] or [1])  # o destaque é sempre um post
+    ordem[k:k] = [c for c in fila.get("cods") or [] if c in por_cod and c not in ordem]
     resto = "".join(_mini(por_cod[c], est, set()) for c in ordem[1:])
     return ('  <section class="recente" aria-labelledby="t-recente">\n'
             '    <h2 class="titulo" id="t-recente">Produtos dos vídeos</h2>\n'
@@ -777,7 +818,9 @@ def gerar(itens, ns=NS, rec=None, estado=None):
     est = ler_estado() if estado is None else estado
     fora = est.get("fora") or {}
     itens = [i for i in itens if i["cod"] not in fora]
-    rec = [r for r in rec or [] if r["cod"] not in fora]
+    fila = est.get("fila") or {}
+    # a conferência do contador remonta rec pelo bloco, que traz a fila: produto da fila nunca vira post aqui
+    rec = [r for r in rec or [] if r["cod"] not in fora and r["cod"] not in set(fila.get("cods") or [])]
     videos = set(COM_POST) | {r["cod"] for r in rec}
     cliques = est.get("cliques") or {}
     itens = ordenar(itens, est, videos)
@@ -794,7 +837,7 @@ def gerar(itens, ns=NS, rec=None, estado=None):
         if contagem[k]:
             chips.append(f'<button type="button" class="chip" data-cat="{k}" aria-pressed="false">{e(rot)} <span>{contagem[k]}</span></button>')
     cards = [_card(i, est, videos, cliques) for i in itens]
-    bloco = _bloco_recente(itens, rec, est, videos)
+    bloco = _bloco_recente(itens, rec, est, videos, fila)
     ofertas = _bloco_ofertas(itens, est, videos)
     vendidos_de = est.get("vendidos_de")
     nota_vendidos = (f' "+N vendidos" é o número que o anúncio mostrava em {vendidos_de[8:10]}/{vendidos_de[5:7]} '
@@ -848,6 +891,9 @@ def gerar(itens, ns=NS, rec=None, estado=None):
 
 def main():
     itens, fora, erros = montar_itens()
+    rec = recentes(itens, n=len(itens))
+    fila = na_fila(itens, postados={r["cod"] for r in rec})
+    erros += nomes_da_legenda(itens, fila)
     for x in erros:
         print("ERRO:", x)
     print(f"{len(itens)} produtos na página ({sum(i['video'] for i in itens)} com post conferido em 09/10); fora: {fora}")
@@ -855,10 +901,12 @@ def main():
         return 1
     if "--conferir" in sys.argv:
         return 0
-    rec = recentes(itens, n=len(itens))
     print("produtos dos vídeos (post mais recente primeiro):",
           ", ".join(f"{r['cod']} ({r['tema']}, {r['postado'][:16]})" for r in rec) or "nenhum post de afiliado achado (bloco fora)")
+    print("da fila (render pronto, na ordem da fila):", ", ".join(f"{f['cod']} ({f['tema']})" for f in fila) or "nenhum")
     est = montar_estado(itens, ler_contador="--sem-contador" not in sys.argv, anterior=ler_estado())
+    dia = rec[0]["postado"][:10] if rec else ""
+    est["fila"] = {"depois_de": [r["cod"] for r in rec if r["postado"][:10] == dia], "cods": [f["cod"] for f in fila]}
     ESTADO.write_text(json.dumps(est, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8", newline="\n")
     print(f"preço válido {len(est['precos'])} · com desconto do ML "
           f"{sum(1 for r in est['precos'].values() if r.get('desconto_pct'))} · fora (pausado/sem estoque) "
