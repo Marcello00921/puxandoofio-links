@@ -3,6 +3,7 @@
 Uso:  python _gerar.py                 -> lê preço, contador e vendidos, grava _estado.json e reescreve index.html
       python _gerar.py --sem-contador  -> idem, sem ler o contador (ficam os cliques do _estado.json anterior)
       python _gerar.py --conferir      -> só confere (rc 1 se faltar título curto, categoria ou link)
+      python _gerar.py --links         -> só imprime a lista vídeo → link (?o=tt&v=<código>), sem gravar nada
 
 produtos.json fica FORA do commit (traz comissão e notas internas; o repo é público). A origem dele é a
 coleta da central de afiliados registrada em agrodoc/tools/explicador/afiliado_links.md (09/10/2026).
@@ -38,6 +39,28 @@ Contador (12/10, meta do Marcello: o 1º R$ de afiliado sem mão dele; o funil d
 - Clique: `fetch(..., {keepalive: true})` SEM preventDefault, então o link segue mesmo com o contador fora do ar.
 - NS de produção abaixo; o teste (agrodoc tools/explicador/vitrine_contador.py --teste-navegador) gera a página com
   NS_TESTE numa pasta temporária, para não sujar o contador de produção.
+- 13/10 · as visitas "tt" vinham infladas pela casa: os portões e o Lighthouse abriam o index.html de produção sem ?o=,
+  e "sem parâmetro = tt" fazia de toda carga uma visita do TikTok (das 40 visitas até 13/10 11:43, entre 17 e 29 eram
+  da casa; refutador 13/10). O clique conta no Chromium e no WebKit sem tela, com o UA do TikTok (toque no "Ver
+  oferta" da página publicada); no navegador interno do app do TikTok, não medido. Agora:
+  · ?o=casa não conta nada (portões, Lighthouse e conferência da casa abrem assim);
+  · automação e robô (navigator.webdriver, HeadlessChrome, Lighthouse, robô de busca ou de prévia de link) somam só
+    "robo": nem visita, nem origem, nem clique (o link segue). Separa a carga da casa que esquece o ?o=casa;
+  · sem ?o=, a origem vem do navegador embutido (UA do TikTok ou do Instagram) ou do referrer; senão, "direto";
+  · app-<tiktok|instagram|facebook|outro>: a categoria do navegador (nada do UA é guardado);
+  · ativa e ativa-<o>: o 1º toque, clique, tecla ou roda do mouse (separa gente de carga automática);
+  · ?v=<código do meli.la>: visita-v e clique-v (total), v-<código> e cv-<código> (por link); v-ausente quando o código
+    do link não está mais na página (link velho: a página abre na ordem de sempre).
+
+Link ?v=<código do meli.la> (13/10): o produto abre no topo ("O produto do vídeo"), antes de tudo, com o botão na 1ª
+dobra (portão G8 do agrodoc: 375×600 e 360×600). Serve onde o link é por vídeo: Promote do TikTok com "visitas ao
+site", story, descrição do YouTube, mensagem, Pinterest. No TikTok orgânico não: a legenda só liga a outro vídeo do
+próprio TikTok, comentário não abre link e a bio é um link só; lá, a ligação vídeo → produto é o destaque (o post mais
+recente na hora em que o gerador rodou), o nome que a legenda cita e o bloco "Produtos dos vídeos".
+`python _gerar.py --links` imprime a lista vídeo → link (posts de afiliado do log da esteira e a fila com render pronto).
+1ª dobra (13/10): o botão do destaque acabava em 651 px a 375 de largura e 672 px a 360; o navegador embutido do
+TikTok tira ~110–250 px da tela com as barras dele. Foto do destaque mais baixa no celular e o selo "Do vídeo mais
+recente" sobre a foto (portão G8 em agrodoc tools/explicador/vitrine_portoes.py: botão inteiro a 375×600 e 360×600).
 
 Bloco "Do vídeo mais recente" (12/10): quem vem da bio do TikTok procura o produto do vídeo que acabou de ver. A fonte
 é o log de post da esteira (agrodoc dados/esteira/log.jsonl: motivo "postou", rc 0, tema af_*), com o link da fila
@@ -246,9 +269,9 @@ def _cod(link) -> str:
     return m.group(1) if m else ""
 
 
-def recentes(itens, agrodoc: Path = AGRODOC, n: int = RECENTES) -> list:
-    """Os últimos posts de afiliado (mais recente primeiro, um por produto) que estão na página.
-    [{"cod", "tema", "postado"}]; sem log, lista vazia (o bloco some)."""
+def posts_afiliado(itens, agrodoc: Path = AGRODOC) -> list:
+    """Todos os posts de afiliado do log da esteira cujo produto está na página, o mais recente primeiro.
+    [{"cod", "tema", "postado"}]; sem log, lista vazia."""
     try:
         fila = json.loads((agrodoc / "dados" / "esteira" / "fila.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -263,7 +286,7 @@ def recentes(itens, agrodoc: Path = AGRODOC, n: int = RECENTES) -> list:
     except (OSError, ValueError, AttributeError):
         link_pauta = {}
     na_pagina = {i["cod"] for i in itens}
-    posts = []
+    posts, ids = [], set()
     try:
         linhas = (agrodoc / "dados" / "esteira" / "log.jsonl").read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -277,16 +300,40 @@ def recentes(itens, agrodoc: Path = AGRODOC, n: int = RECENTES) -> list:
         tema = str((esc or {}).get("tema") or "") if isinstance(esc, dict) else ""
         if not tema.startswith("af_") or x.get("motivo") != "postou" or str(x.get("rc")) != "0" or not x.get("post_id"):
             continue
+        # 13/10 · a esteira grava o mesmo post 2× (a linha da etapa e a do fim, mesmo post_id): um post, uma entrada
+        if x["post_id"] in ids:
+            continue
+        ids.add(x["post_id"])
         cod = link_fila.get(tema) or link_pauta.get(tema) or ""
         if cod in na_pagina:
             posts.append({"cod": cod, "tema": tema, "postado": str(x.get("em") or "")})
     posts.sort(key=lambda p: p["postado"], reverse=True)
+    return posts
+
+
+def recentes(itens, agrodoc: Path = AGRODOC, n: int = RECENTES) -> list:
+    """Os últimos posts de afiliado (mais recente primeiro, um por produto) que estão na página.
+    [{"cod", "tema", "postado"}]; sem log, lista vazia (o bloco some)."""
     out, vistos = [], set()
-    for p in posts:
+    for p in posts_afiliado(itens, agrodoc):
         if p["cod"] not in vistos:
             vistos.add(p["cod"])
             out.append(p)
     return out[:n]
+
+
+def links_por_video(itens, base: str = None, agrodoc: Path = AGRODOC) -> list:
+    """Vídeo → link da vitrine que abre no produto dele (?o=tt&v=<código>): cada post de afiliado do log da esteira
+    (o mais recente primeiro) e, depois, os da fila com render pronto. [{"quando", "tema", "cod", "titulo", "link"}]."""
+    base = base or SITE
+    titulo = {i["cod"]: i["titulo"] for i in itens}
+    posts = posts_afiliado(itens, agrodoc)
+    out = [{"quando": p["postado"][:16].replace("T", " "), "tema": p["tema"], "cod": p["cod"]} for p in posts]
+    out += [{"quando": "fila", "tema": f["tema"], "cod": f["cod"]}
+            for f in na_fila(itens, agrodoc, postados={p["cod"] for p in posts})]
+    for x in out:
+        x.update(titulo=titulo[x["cod"]], link=f"{base}?o=tt&v={x['cod']}")
+    return out
 
 
 def na_fila(itens, agrodoc: Path = AGRODOC, postados=()) -> list:
@@ -335,11 +382,15 @@ h2.titulo{font-size:1.1rem;font-weight:800;color:var(--graf);margin:0 0 10px}
 .sub{margin:-6px 0 10px;font-size:.78rem;color:var(--cinza)}
 .recente,.ofertas{margin:0 0 22px}
 .destaque{background:var(--cartao);border:2px solid var(--cta);border-radius:12px;overflow:hidden;margin:0 0 12px;position:relative}
-.destaque .foto{display:block;background:#fff;height:230px}
+.destaque .foto{display:block;background:#fff;height:172px}
 .destaque .foto img{display:block;width:100%;height:100%;object-fit:contain}
 .destaque .corpo{padding:10px 12px 12px}
 .destaque h3{font-size:1.15rem;line-height:1.25}
-.selo-video{align-self:flex-start;margin:0 0 6px;background:var(--fio);color:#fff;font-size:.75rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;border-radius:4px;padding:3px 8px}
+.selo-video{position:absolute;top:8px;left:8px;z-index:1;margin:0;background:var(--fio);color:#fff;font-size:.75rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;border-radius:4px;padding:3px 8px}
+.veio{margin:0 0 18px}
+.veio ul{list-style:none;margin:0;padding:0;max-width:420px}
+.veio .card{border:2px solid var(--cta)}
+.veio .card .foto{aspect-ratio:auto;height:172px}
 @media (min-width:640px){.destaque{display:grid;grid-template-columns:320px 1fr}.destaque .foto{height:320px}.destaque .corpo{padding:18px}}
 .trilho{list-style:none;margin:0;padding:0 0 6px;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(150px,46%);gap:10px;overflow-x:auto;scroll-snap-type:x proximity}
 @media (min-width:640px){.trilho{grid-auto-columns:210px}}
@@ -397,26 +448,45 @@ footer a{color:#5E0810}
 
 # Contador (ver docstring). `__NS__` é trocado pelo namespace na geração. O clique NÃO tem preventDefault: o link segue
 # sozinho; o fetch keepalive sobrevive à troca de página e, se o contador cair, só se perde a contagem.
-# Origem (12/10, córtex): ?o=pin|ig|tt na URL da página; sem parâmetro = tt (a bio do TikTok de hoje); outro valor =
-# "outro" (não cria chave nova por erro de digitação). Chaves: a da página (P: "visita" no index, "pv-<MLB>" na página
-# do produto) e P-<o>; no clique, c-<código> e clique-<o>.
+# Origem (12/10, córtex; 13/10): ?o=pin|ig|tt na URL da página; ?o=casa = carga da casa, não conta nada; sem parâmetro,
+# pelo navegador embutido (UA) ou pelo referrer, senão "direto"; outro valor = "outro" (não cria chave nova por erro de
+# digitação). Chaves: a da página (P: "visita" no index, "pv-<MLB>" na página do produto), P-<o> e app-<app>; com
+# ?v=, P-v e v-<código> (v-ausente se o código não está na página); no 1º toque/clique/tecla, ativa e ativa-<o>; no
+# clique, c-<código>, clique-<o> e, no produto do ?v=, clique-v e cv-<código>. Automação ou robô (navigator.webdriver,
+# UA de navegador sem tela, Lighthouse, robô de busca/prévia): só "robo", e nada mais conta (13/10).
 JS_CONTADOR = """
 (function(){
   var B='__BASE__', N='__NS__', P='__PAG__';
-  var m=/[?&]o=([a-z]+)/.exec(location.search), o=m?m[1]:'tt';
-  if(['pin','ig','tt'].indexOf(o)<0){o='outro';}
+  var m=/[?&]o=([a-z]+)/.exec(location.search);
+  if(m&&m[1]==='casa'){return;}
   function hit(k){try{fetch(B+'/hit/'+N+'/'+k,{keepalive:true,credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer'}).catch(function(){});}catch(e){}}
+  var ua=navigator.userAgent||'', rf=document.referrer||'';
+  if(navigator.webdriver||/HeadlessChrome|Lighthouse|bot[\\/;]|crawl|spider|facebookexternalhit|Bytespider|Google-InspectionTool/i.test(ua)){hit('robo');return;}
+  var app=/musical_ly|trill_|BytedanceWebview|TikTok/i.test(ua)?'tiktok':/Instagram/.test(ua)?'instagram':/FBAN|FBAV|FB_IAB/.test(ua)?'facebook':'outro';
+  var o=m?m[1]:(app==='tiktok'||/tiktok\\.com/.test(rf))?'tt':(app==='instagram'||/instagram\\.com/.test(rf))?'ig':/pinterest\\./.test(rf)?'pin':'direto';
+  if(['pin','ig','tt','direto'].indexOf(o)<0){o='outro';}
   hit(P);
   hit(P+'-'+o);
+  hit('app-'+app);
+  var veio=document.querySelector('.veio'), vc=veio&&veio.querySelector('a[data-cod]');
+  vc=vc?vc.getAttribute('data-cod'):'';
+  if(vc){hit(P+'-v');hit('v-'+vc);}else if(/[?&]v=/.test(location.search)){hit('v-ausente');}
+  var gente=false;
+  function ativa(){if(gente){return;}gente=true;hit('ativa');hit('ativa-'+o);}
+  ['touchstart','pointerdown','keydown','wheel'].forEach(function(t){addEventListener(t,ativa,{capture:true,passive:true,once:true});});
   document.addEventListener('click',function(ev){
     var a=ev.target&&ev.target.closest?ev.target.closest('a[data-cod]'):null;
     if(!a){return;}
+    ativa();
     hit('c-'+a.getAttribute('data-cod'));
     hit('clique-'+o);
+    if(vc&&veio.contains(a)){hit('clique-v');hit('cv-'+vc);}
   },true);
 })();
 """
-ORIGENS = ("tt", "pin", "ig", "outro")
+ORIGENS = ("tt", "pin", "ig", "direto", "outro")
+APPS = ("tiktok", "instagram", "facebook", "outro")
+CASA_ROBO = ("robo",)        # automação/robô: não entra em visita nem em clique (o ?o=casa não soma nada)
 
 
 def js_contador(ns: str, pagina: str) -> str:
@@ -430,7 +500,9 @@ def js_contador(ns: str, pagina: str) -> str:
 # Só entra produto com conteúdo REFUTADO (item de afiliado da esteira postado ou com render pronto, cujo roteiro passou
 # no refutador) e que está na página. No feed, só os já POSTADOS com capa nossa: volume de afiliado é spam pela regra
 # do Pinterest, e assim o feed cresce no passo da esteira (≈ 1 por dia), não 85 de uma vez.
-SITE = "https://marcello00921.github.io/puxandoofio-links/"
+# 13/10 · a vitrine mudou para o Cloudflare Pages (o GitHub Pages veda site comercial: agrodoc tools/pages_cloudflare.py);
+# o endereço velho vira redirecionamento que leva caminho, ?o=, ?v= e # (ramo gh-pages).
+SITE = "https://puxandoofio.pages.dev/"
 # Código da meta p:domain_verify do Pinterest: vem do Marcello (só ele loga na conta). Vazio = a meta não sai.
 PINTEREST_VERIFICACAO = ""
 ESTADOS_REFUTADOS = ("postado", "render_ok")
@@ -622,6 +694,15 @@ JS = """
   busca.addEventListener('input',aplicar);
   var h=decodeURIComponent((location.hash||'').slice(1));
   if(h&&chips.some(function(b){return b.getAttribute('data-cat')===h;})){escolher(h);}else{aplicar();}
+  // ?v=<código do meli.la>: o produto do link abre no topo, antes de tudo (story, descrição, mensagem)
+  var v=(/[?&]v=([A-Za-z0-9]+)/.exec(location.search)||[])[1];
+  var alvo=v&&document.querySelector('#grade .card[data-cod="'+v+'"]');
+  if(alvo){
+    var sec=document.createElement('section'), ul=document.createElement('ul'), c=alvo.cloneNode(true), mn=document.querySelector('main');
+    sec.className='veio';sec.setAttribute('aria-labelledby','t-veio');
+    sec.innerHTML='<h2 class="titulo" id="t-veio">O produto do vídeo</h2>';
+    c.hidden=false;ul.appendChild(c);sec.appendChild(ul);mn.insertBefore(sec,mn.firstElementChild);
+  }
 })();
 """
 
@@ -862,7 +943,7 @@ def gerar(itens, ns=NS, rec=None, estado=None):
 <main>
   <header>
     <h1>Puxando o Fio</h1>
-    <p>Os produtos dos nossos vídeos e outros achados, com o link de cada um no Mercado Livre.</p>
+    <p>Os produtos dos vídeos e outros achados.</p>
     <p class="ia">Os vídeos do canal têm narração com voz sintética (IA).</p>
   </header>
 {bloco}{ofertas}  <h2 class="titulo" id="t-todos">Todos os produtos</h2>
@@ -900,6 +981,11 @@ def main():
     if erros:
         return 1
     if "--conferir" in sys.argv:
+        return 0
+    if "--links" in sys.argv:
+        print("| post | tema | produto (título do cartão) | link |\n|---|---|---|---|")
+        for x in links_por_video(itens):
+            print(f"| {x['quando']} | {x['tema']} | {x['titulo']} | {x['link']} |")
         return 0
     print("produtos dos vídeos (post mais recente primeiro):",
           ", ".join(f"{r['cod']} ({r['tema']}, {r['postado'][:16]})" for r in rec) or "nenhum post de afiliado achado (bloco fora)")

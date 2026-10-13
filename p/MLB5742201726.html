@@ -6,7 +6,7 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="robots" content="noindex">
 <title>Torneira gourmet Camperluz · Puxando o Fio</title>
-<meta property="og:image" content="https://marcello00921.github.io/puxandoofio-links/m/MLB5742201726.png">
+<meta property="og:image" content="https://puxandoofio.pages.dev/m/MLB5742201726.png">
 <style>
 :root{--papel:#F4F1EA;--cartao:#fff;--tinta:#1F1D1A;--graf:#2E2B27;--cinza:#5F584F;--linha:#DDD6CA;--fio:#A3121E;--cta:#C8102E;--cta-escuro:#8E0A1F;--verde:#0A7A3D}
 *{box-sizing:border-box}
@@ -23,11 +23,15 @@ h2.titulo{font-size:1.1rem;font-weight:800;color:var(--graf);margin:0 0 10px}
 .sub{margin:-6px 0 10px;font-size:.78rem;color:var(--cinza)}
 .recente,.ofertas{margin:0 0 22px}
 .destaque{background:var(--cartao);border:2px solid var(--cta);border-radius:12px;overflow:hidden;margin:0 0 12px;position:relative}
-.destaque .foto{display:block;background:#fff;height:230px}
+.destaque .foto{display:block;background:#fff;height:172px}
 .destaque .foto img{display:block;width:100%;height:100%;object-fit:contain}
 .destaque .corpo{padding:10px 12px 12px}
 .destaque h3{font-size:1.15rem;line-height:1.25}
-.selo-video{align-self:flex-start;margin:0 0 6px;background:var(--fio);color:#fff;font-size:.75rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;border-radius:4px;padding:3px 8px}
+.selo-video{position:absolute;top:8px;left:8px;z-index:1;margin:0;background:var(--fio);color:#fff;font-size:.75rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;border-radius:4px;padding:3px 8px}
+.veio{margin:0 0 18px}
+.veio ul{list-style:none;margin:0;padding:0;max-width:420px}
+.veio .card{border:2px solid var(--cta)}
+.veio .card .foto{aspect-ratio:auto;height:172px}
 @media (min-width:640px){.destaque{display:grid;grid-template-columns:320px 1fr}.destaque .foto{height:320px}.destaque .corpo{padding:18px}}
 .trilho{list-style:none;margin:0;padding:0 0 6px;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(150px,46%);gap:10px;overflow-x:auto;scroll-snap-type:x proximity}
 @media (min-width:640px){.trilho{grid-auto-columns:210px}}
@@ -99,16 +103,30 @@ footer a{color:#5E0810}
 <script>
 (function(){
   var B='https://abacus.jasoncameron.dev', N='puxandoofio-links', P='pv-MLB5742201726';
-  var m=/[?&]o=([a-z]+)/.exec(location.search), o=m?m[1]:'tt';
-  if(['pin','ig','tt'].indexOf(o)<0){o='outro';}
+  var m=/[?&]o=([a-z]+)/.exec(location.search);
+  if(m&&m[1]==='casa'){return;}
   function hit(k){try{fetch(B+'/hit/'+N+'/'+k,{keepalive:true,credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer'}).catch(function(){});}catch(e){}}
+  var ua=navigator.userAgent||'', rf=document.referrer||'';
+  if(navigator.webdriver||/HeadlessChrome|Lighthouse|bot[\/;]|crawl|spider|facebookexternalhit|Bytespider|Google-InspectionTool/i.test(ua)){hit('robo');return;}
+  var app=/musical_ly|trill_|BytedanceWebview|TikTok/i.test(ua)?'tiktok':/Instagram/.test(ua)?'instagram':/FBAN|FBAV|FB_IAB/.test(ua)?'facebook':'outro';
+  var o=m?m[1]:(app==='tiktok'||/tiktok\.com/.test(rf))?'tt':(app==='instagram'||/instagram\.com/.test(rf))?'ig':/pinterest\./.test(rf)?'pin':'direto';
+  if(['pin','ig','tt','direto'].indexOf(o)<0){o='outro';}
   hit(P);
   hit(P+'-'+o);
+  hit('app-'+app);
+  var veio=document.querySelector('.veio'), vc=veio&&veio.querySelector('a[data-cod]');
+  vc=vc?vc.getAttribute('data-cod'):'';
+  if(vc){hit(P+'-v');hit('v-'+vc);}else if(/[?&]v=/.test(location.search)){hit('v-ausente');}
+  var gente=false;
+  function ativa(){if(gente){return;}gente=true;hit('ativa');hit('ativa-'+o);}
+  ['touchstart','pointerdown','keydown','wheel'].forEach(function(t){addEventListener(t,ativa,{capture:true,passive:true,once:true});});
   document.addEventListener('click',function(ev){
     var a=ev.target&&ev.target.closest?ev.target.closest('a[data-cod]'):null;
     if(!a){return;}
+    ativa();
     hit('c-'+a.getAttribute('data-cod'));
     hit('clique-'+o);
+    if(vc&&veio.contains(a)){hit('clique-v');hit('cv-'+vc);}
   },true);
 })();
 </script>
