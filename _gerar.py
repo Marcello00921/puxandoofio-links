@@ -2,6 +2,7 @@
 
 Uso:  python _gerar.py                 -> lê preço, contador e vendidos, grava _estado.json e reescreve index.html
       python _gerar.py --sem-contador  -> idem, sem ler o contador (ficam os cliques do _estado.json anterior)
+      python _gerar.py --so-html       -> sem rede: só reescreve index.html a partir de _estado.json
       python _gerar.py --conferir      -> só confere (rc 1 se faltar título curto, categoria ou link)
       python _gerar.py --links         -> só imprime a lista vídeo → link (?o=tt&v=<código>), sem gravar nada
 
@@ -378,6 +379,10 @@ header{border-left:4px solid var(--fio);padding-left:12px;margin-bottom:16px}
 h1{font-size:1.35rem;font-weight:800;letter-spacing:-.01em;margin:0;color:var(--graf);line-height:1.2}
 header p{margin:2px 0 0;color:var(--cinza);font-size:.92rem}
 header .ia{font-size:.78rem}
+a.guia{display:flex;align-items:center;gap:8px;min-height:48px;margin:6px 0 0;padding:4px 10px;border:2px solid var(--fio);border-radius:8px;color:var(--graf);text-decoration:none;font-size:.86rem;line-height:1.2;background:var(--cartao)}
+a.guia strong{flex:1}
+.guia-selo{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--fio);white-space:nowrap}
+.guia-preco{font-weight:800;white-space:nowrap}
 h2.titulo{font-size:1.1rem;font-weight:800;color:var(--graf);margin:0 0 10px}
 .sub{margin:-6px 0 10px;font-size:.78rem;color:var(--cinza)}
 .recente,.ofertas{margin:0 0 22px}
@@ -891,6 +896,20 @@ def _bloco_ofertas(itens, est, videos) -> str:
             '  </section>\n')
 
 
+# 17/10 · ponte canal → guia: os vídeos de chamada do guia (cep_guia, cartao_luhn_guia, cpf_identidade_guia) mandam à
+# bio, e a bio é esta página. O guia é produto PRÓPRIO do canal (Kiwify), não afiliado: faixa compacta no cabeçalho,
+# rótulo "Do próprio canal", link do checkout com UTM e data-cod="guia" (o contador soma c-guia no clique). Faixa e não
+# cartão: o botão do destaque acabava em 544 px a 375×600 (G8, folga de 56 px); um cartão empurrava para fora da dobra.
+GUIA = {"cod": "guia", "titulo": "Guia de Claude Code em PDF", "preco": "R$ 39,90",
+        "link": "https://pay.kiwify.com.br/LClZD5P?utm_source=tiktok&utm_medium=bio&utm_campaign=vitrine"}
+
+
+def _bloco_guia(g=GUIA, e=html.escape) -> str:
+    return (f'    <a class="guia" href="{e(g["link"])}" data-cod="{e(g["cod"])}" rel="noopener">'
+            f'<span class="guia-selo">Do próprio canal</span> <strong>{e(g["titulo"])}</strong> '
+            f'<span class="guia-preco">{e(g["preco"])}</span></a>\n') if g else ""
+
+
 def gerar(itens, ns=NS, rec=None, estado=None):
     """index.html. estado=None lê _estado.json (assim gerar(itens, NS, rec) reproduz a página publicada)."""
     e = html.escape
@@ -945,7 +964,7 @@ def gerar(itens, ns=NS, rec=None, estado=None):
     <h1>Puxando o Fio</h1>
     <p>Os produtos dos vídeos e outros achados.</p>
     <p class="ia">Os vídeos do canal têm narração com voz sintética (IA).</p>
-  </header>
+{_bloco_guia()}  </header>
 {bloco}{ofertas}  <h2 class="titulo" id="t-todos">Todos os produtos</h2>
   <div class="barra">
     <input id="busca" class="busca" type="search" placeholder="Buscar produto" aria-label="Buscar produto" autocomplete="off">
@@ -958,7 +977,7 @@ def gerar(itens, ns=NS, rec=None, estado=None):
   <p id="vazio" class="vazio" hidden>Nenhum produto com esse nome. Tente outra palavra ou outra categoria.</p>
   <footer>
     <p><strong>Quem mantém esta página:</strong> Puxando o Fio, canal de vídeos que explica como as coisas funcionam por dentro. Contato: <a href="https://www.tiktok.com/@puxandoofioo" rel="noopener">@puxandoofioo no TikTok</a>.</p>
-    <p>Esta página é do canal, não do Mercado Livre, e não vende nem entrega nada. A venda é feita no Mercado Livre: preço, frete, estoque, troca, devolução e garantia são os do anúncio no momento da compra.</p>
+    <p>Esta página é do canal, não do Mercado Livre, e não vende nem entrega nada. O guia em PDF do topo é do próprio canal, vendido e entregue pela Kiwify. A venda dos produtos é feita no Mercado Livre: preço, frete, estoque, troca, devolução e garantia são os do anúncio no momento da compra.</p>
     <p>Preço, preço riscado e "% OFF" só aparecem quando lidos na API oficial do Mercado Livre, com a data e a hora da leitura em cada produto; com mais de 24 horas, somem.{nota_vendidos} As fotos vêm dos próprios anúncios; os nomes foram resumidos.</p>
     <p>Sem cookies e sem dado pessoal: a página só soma quantas visitas e quantos cliques cada produto recebe, num contador público (Abacus).</p>
   </footer>
@@ -981,6 +1000,10 @@ def main():
     if erros:
         return 1
     if "--conferir" in sys.argv:
+        return 0
+    if "--so-html" in sys.argv:          # sem rede: reescreve index.html da fotografia _estado.json (preço, fila etc.)
+        (AQUI / "index.html").write_text(gerar(itens, NS, rec), encoding="utf-8", newline="\n")
+        print("index.html regravado de _estado.json:", (AQUI / "index.html").stat().st_size, "bytes")
         return 0
     if "--links" in sys.argv:
         print("| post | tema | produto (título do cartão) | link |\n|---|---|---|---|")

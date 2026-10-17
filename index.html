@@ -21,6 +21,10 @@ header{border-left:4px solid var(--fio);padding-left:12px;margin-bottom:16px}
 h1{font-size:1.35rem;font-weight:800;letter-spacing:-.01em;margin:0;color:var(--graf);line-height:1.2}
 header p{margin:2px 0 0;color:var(--cinza);font-size:.92rem}
 header .ia{font-size:.78rem}
+a.guia{display:flex;align-items:center;gap:8px;min-height:48px;margin:6px 0 0;padding:4px 10px;border:2px solid var(--fio);border-radius:8px;color:var(--graf);text-decoration:none;font-size:.86rem;line-height:1.2;background:var(--cartao)}
+a.guia strong{flex:1}
+.guia-selo{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--fio);white-space:nowrap}
+.guia-preco{font-weight:800;white-space:nowrap}
 h2.titulo{font-size:1.1rem;font-weight:800;color:var(--graf);margin:0 0 10px}
 .sub{margin:-6px 0 10px;font-size:.78rem;color:var(--cinza)}
 .recente,.ofertas{margin:0 0 22px}
@@ -96,6 +100,7 @@ footer a{color:#5E0810}
     <h1>Puxando o Fio</h1>
     <p>Os produtos dos vídeos e outros achados.</p>
     <p class="ia">Os vídeos do canal têm narração com voz sintética (IA).</p>
+    <a class="guia" href="https://pay.kiwify.com.br/LClZD5P?utm_source=tiktok&amp;utm_medium=bio&amp;utm_campaign=vitrine" data-cod="guia" rel="noopener"><span class="guia-selo">Do próprio canal</span> <strong>Guia de Claude Code em PDF</strong> <span class="guia-preco">R$ 39,90</span></a>
   </header>
   <section class="recente" aria-labelledby="t-recente">
     <h2 class="titulo" id="t-recente">Produtos dos vídeos</h2>
@@ -198,7 +203,7 @@ footer a{color:#5E0810}
   <p id="vazio" class="vazio" hidden>Nenhum produto com esse nome. Tente outra palavra ou outra categoria.</p>
   <footer>
     <p><strong>Quem mantém esta página:</strong> Puxando o Fio, canal de vídeos que explica como as coisas funcionam por dentro. Contato: <a href="https://www.tiktok.com/@puxandoofioo" rel="noopener">@puxandoofioo no TikTok</a>.</p>
-    <p>Esta página é do canal, não do Mercado Livre, e não vende nem entrega nada. A venda é feita no Mercado Livre: preço, frete, estoque, troca, devolução e garantia são os do anúncio no momento da compra.</p>
+    <p>Esta página é do canal, não do Mercado Livre, e não vende nem entrega nada. O guia em PDF do topo é do próprio canal, vendido e entregue pela Kiwify. A venda dos produtos é feita no Mercado Livre: preço, frete, estoque, troca, devolução e garantia são os do anúncio no momento da compra.</p>
     <p>Preço, preço riscado e "% OFF" só aparecem quando lidos na API oficial do Mercado Livre, com a data e a hora da leitura em cada produto; com mais de 24 horas, somem. "+N vendidos" é o número que o anúncio mostrava em 09/10 (ele só cresce). As fotos vêm dos próprios anúncios; os nomes foram resumidos.</p>
     <p>Sem cookies e sem dado pessoal: a página só soma quantas visitas e quantos cliques cada produto recebe, num contador público (Abacus).</p>
   </footer>
