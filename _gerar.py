@@ -401,6 +401,8 @@ h2.titulo{font-size:1.1rem;font-weight:800;color:var(--graf);margin:0 0 10px}
 @media (min-width:640px){.trilho{grid-auto-columns:210px}}
 .card,.mini{background:var(--cartao);border:1px solid var(--linha);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;position:relative}
 .mini{scroll-snap-align:start}
+.amz{background:var(--cartao);border:1px solid var(--linha);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:4px;scroll-snap-align:start}
+.amz h3{margin:0;font-size:.9rem}
 .card[hidden],.ofertas[hidden]{display:none}
 .card .foto,.mini .foto{display:block;background:#fff;aspect-ratio:1/1}
 .card .foto img,.mini .foto img{display:block;width:100%;height:100%;object-fit:contain}
@@ -910,6 +912,49 @@ def _bloco_guia(g=GUIA, e=html.escape) -> str:
             f'<span class="guia-preco">{e(g["preco"])}</span></a>\n') if g else ""
 
 
+# 20/10 · Amazon na bio (decisão do córtex; Marcello 20/10: "não entrou nem 1 centavo de nada ainda"). Os links vêm do
+# CSV etiquetado em 01/10 (dados/afiliados/amazon_13_produtos_01out.csv), só dos temas que foram ao ar (log da esteira:
+# lapis 28/09, cep_regioes 29/09, miojo, lata e caneta 30/09). Sem preço e sem foto: o preço do CSV é de 01/10 e o
+# Contrato Operacional dos Associados BR só admite preço/imagem atual da própria Amazon; a comissão do CSV nunca entra
+# (o repo é público). A declaração é a da cláusula 5 do Contrato Operacional, literal (lida em 20/10 em
+# associados.amazon.com.br/help/operating/agreement). B00004Z5SN (Avery endereço) fora: HTTP 500 em 2 de 3 leituras
+# de 20/10 (saida/explicador/amazon_bio_20out_links.txt).
+AMAZON_CSV = AGRODOC / "dados" / "afiliados" / "amazon_13_produtos_01out.csv"
+AMAZON_TAG = "puxandoofio-20"
+AMAZON_FORA = {"B00004Z5SN": "HTTP 500 em 2 de 3 leituras (20/10)"}
+AMAZON_TEMAS = {"lapis": "Do vídeo do lápis", "caneta": "Do vídeo da caneta BIC", "cep_regioes": "Do vídeo do CEP",
+                "lata": "Do vídeo da lata", "miojo": "Do vídeo do miojo"}
+AMAZON_DECLARACAO = "Como participante do Programa de Associados da Amazon, sou remunerado pelas compras qualificadas efetuadas."
+
+
+def amazon_itens(caminho: Path = AMAZON_CSV) -> list:
+    """Linhas do CSV com tema que foi ao ar, link com a tag e ASIN fora de AMAZON_FORA, na ordem dos temas."""
+    import csv
+    try:
+        linhas = list(csv.DictReader(caminho.open(encoding="utf-8")))
+    except OSError:
+        return []
+    ok = [r for r in linhas if r.get("tema") in AMAZON_TEMAS and r.get("asin") not in AMAZON_FORA
+          and f"tag={AMAZON_TAG}" in (r.get("link") or "") and (r.get("link") or "").startswith("https://www.amazon.com.br/dp/")]
+    ordem = list(AMAZON_TEMAS)
+    return sorted(ok, key=lambda r: (ordem.index(r["tema"]), int(r.get("n") or 0)))
+
+
+def _bloco_amazon(linhas, e=html.escape) -> str:
+    if not linhas:
+        return ""
+    lis = "".join(
+        f'<li class="amz" data-cod="amz-{e(r["asin"])}"><p class="selo-video">{e(AMAZON_TEMAS[r["tema"]])}</p>'
+        f'<h3>{e(r["produto"])}</h3><p class="neutro">Preço e frete na Amazon</p>'
+        f'<a class="botao" href="{e(r["link"])}" data-cod="amz-{e(r["asin"])}" rel="{REL}">Ver na Amazon '
+        f'<span>amazon.com.br</span></a></li>' for r in linhas)
+    return ('  <section class="amazon" aria-labelledby="t-amazon">\n'
+            '    <h2 class="titulo" id="t-amazon">Dos vídeos, na Amazon</h2>\n'
+            f'    <p class="sub">{e(AMAZON_DECLARACAO)}</p>\n'
+            f'    <ul class="trilho" aria-label="Produtos dos vídeos na Amazon">{lis}</ul>\n'
+            '  </section>\n')
+
+
 def gerar(itens, ns=NS, rec=None, estado=None):
     """index.html. estado=None lê _estado.json (assim gerar(itens, NS, rec) reproduz a página publicada)."""
     e = html.escape
@@ -939,6 +984,11 @@ def gerar(itens, ns=NS, rec=None, estado=None):
     cards = [_card(i, est, videos, cliques) for i in itens]
     bloco = _bloco_recente(itens, rec, est, videos, fila)
     ofertas = _bloco_ofertas(itens, est, videos)
+    amz = amazon_itens()
+    amazon = _bloco_amazon(amz)
+    publi_amz = (f' Na Amazon: {e(AMAZON_DECLARACAO)}' if amz else "")
+    rodape_amz = (" Os produtos da Amazon são vendidos na Amazon, com o preço, o frete e as condições do anúncio na hora "
+                  "da compra." if amz else "")
     vendidos_de = est.get("vendidos_de")
     nota_vendidos = (f' "+N vendidos" é o número que o anúncio mostrava em {vendidos_de[8:10]}/{vendidos_de[5:7]} '
                      '(ele só cresce).') if vendidos_de else ""
@@ -958,14 +1008,14 @@ def gerar(itens, ns=NS, rec=None, estado=None):
 <style>{CSS}</style>
 </head>
 <body>
-<p class="publi" id="publi"><strong>Publicidade · links de afiliado</strong> do Mercado Livre (#publi). Se você comprar por eles, o canal pode ganhar comissão, e o preço para você é o mesmo.</p>
+<p class="publi" id="publi"><strong>Publicidade · links de afiliado</strong> do Mercado Livre (#publi). Se você comprar por eles, o canal pode ganhar comissão, e o preço para você é o mesmo.{publi_amz}</p>
 <main>
   <header>
     <h1>Puxando o Fio</h1>
     <p>Os produtos dos vídeos e outros achados.</p>
     <p class="ia">Os vídeos do canal têm narração com voz sintética (IA).</p>
 {_bloco_guia()}  </header>
-{bloco}{ofertas}  <h2 class="titulo" id="t-todos">Todos os produtos</h2>
+{bloco}{ofertas}{amazon}  <h2 class="titulo" id="t-todos">Todos os produtos</h2>
   <div class="barra">
     <input id="busca" class="busca" type="search" placeholder="Buscar produto" aria-label="Buscar produto" autocomplete="off">
     <div class="chips" role="group" aria-label="Categorias">{''.join(chips)}</div>
@@ -977,7 +1027,7 @@ def gerar(itens, ns=NS, rec=None, estado=None):
   <p id="vazio" class="vazio" hidden>Nenhum produto com esse nome. Tente outra palavra ou outra categoria.</p>
   <footer>
     <p><strong>Quem mantém esta página:</strong> Puxando o Fio, canal de vídeos que explica como as coisas funcionam por dentro. Contato: <a href="https://www.tiktok.com/@puxandoofioo" rel="noopener">@puxandoofioo no TikTok</a>.</p>
-    <p>Esta página é do canal, não do Mercado Livre, e não vende nem entrega nada. O guia em PDF do topo é do próprio canal, vendido e entregue pela Kiwify. A venda dos produtos é feita no Mercado Livre: preço, frete, estoque, troca, devolução e garantia são os do anúncio no momento da compra.</p>
+    <p>Esta página é do canal, não do Mercado Livre, e não vende nem entrega nada. O guia em PDF do topo é do próprio canal, vendido e entregue pela Kiwify. A venda dos produtos é feita no Mercado Livre: preço, frete, estoque, troca, devolução e garantia são os do anúncio no momento da compra.{rodape_amz}</p>
     <p>Preço, preço riscado e "% OFF" só aparecem quando lidos na API oficial do Mercado Livre, com a data e a hora da leitura em cada produto; com mais de 24 horas, somem.{nota_vendidos} As fotos vêm dos próprios anúncios; os nomes foram resumidos.</p>
     <p>Sem cookies e sem dado pessoal: a página só soma quantas visitas e quantos cliques cada produto recebe, num contador público (Abacus).</p>
   </footer>
